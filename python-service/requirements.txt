@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+python-multipart
+pdf2image
+Pillow
+openai
+pytest
+pytest-asyncio
+httpx
+python-dotenv
