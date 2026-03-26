@@ -39,10 +39,11 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ success: true, data: response.data });
-  } catch (error: any) {
-    console.error("Sheets API Error:", error);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error("Sheets API Error:", err);
     return NextResponse.json(
-      { error: error.message || "Failed to save to Google Sheets" },
+      { error: err.message || "Failed to save to Google Sheets" },
       { status: 500 }
     );
   }

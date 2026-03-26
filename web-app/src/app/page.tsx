@@ -4,11 +4,19 @@ import React, { useState, useRef } from "react";
 import { UploadCloud, FileText, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
+interface ExtractionResult {
+  tanggal: string;
+  nama_pengirim: string;
+  nama_pt: string;
+  penerima: string;
+  total_harga: string;
+}
+
 export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [extractedData, setExtractedData] = useState<any>(null);
+  const [extractedData, setExtractedData] = useState<ExtractionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -50,8 +58,8 @@ export default function Home() {
       }
 
       setExtractedData(data.data);
-    } catch (err: any) {
-      setError(err.message || "An unexpected error occurred.");
+    } catch (err: unknown) {
+      setError((err as Error).message || "An unexpected error occurred.");
     } finally {
       setIsUploading(false);
     }
@@ -87,8 +95,8 @@ export default function Home() {
         setSuccess(null);
       }, 3000);
 
-    } catch (err: any) {
-      setError(err.message || "An unexpected error occurred while saving.");
+    } catch (err: unknown) {
+      setError((err as Error).message || "An unexpected error occurred while saving.");
     } finally {
       setIsSaving(false);
     }
@@ -268,7 +276,7 @@ export default function Home() {
   );
 }
 
-function DataRow({ label, value }: { label: string; value: any }) {
+function DataRow({ label, value }: { label: string; value: string | undefined }) {
   return (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between py-2 border-b border-slate-800/50 last:border-0">
       <span className="text-slate-400 text-sm mb-1 sm:mb-0">{label}</span>

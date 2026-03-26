@@ -28,10 +28,11 @@ export async function POST(req: NextRequest) {
     const data = await pythonResponse.json();
 
     return NextResponse.json(data);
-  } catch (error: any) {
-    console.error("Upload API Error:", error);
+  } catch (error: unknown) {
+    const err = error as Error;
+    console.error("Upload API Error:", err);
     return NextResponse.json(
-      { error: error.message || "Failed to process the PDF" },
+      { error: err.message || "Failed to process the PDF" },
       { status: 500 }
     );
   }
