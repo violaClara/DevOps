@@ -38,20 +38,34 @@ client = AsyncOpenAI(
 MAX_CONCURRENT_REQUESTS = int(os.getenv("MAX_CONCURRENT_REQUESTS", "5"))
 api_semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
-SYSTEM_PROMPT = """Check the document image carefully and extract the following information:
-1. tanggal (date)
-2. nama pengirim (sender name)
-3. nama pt (company name)
-4. penerima (recipient)
-5. total harga (total price)
+SYSTEM_PROMPT = """Check the document image carefully and extract the following information comprehensively:
+1. Nomor Invoice (Invoice Number)
+2. Tanggal Invoice (Date). MUST be formatted purely as DD/MM/YYYY.
+3. Tanggal Jatuh Tempo (Due Date). MUST be formatted purely as DD/MM/YYYY.
+4. Nama Pengirim/Perusahaan (Vendor/Seller)
+5. Nama PT (Your Company/Tenant if mentioned separately, else leave blank)
+6. Penerima (Client/Buyer)
+7. Mata Uang (Currency). Extract just the symbol or word (e.g., Rp, $, USD, IDR).
+8. Total Harga (Total Amount). MUST be a number. Use dot (.) for decimal separator if the quantity is not a whole number. Remove currency symbols and thousand separator grouping (e.g., 1000.50 or 500000).
+9. Pajak (VAT/PPN). MUST be a number. Use dot (.) for decimal if needed. Remove currency symbols and comma/dot groupings.
+10. Deskripsi Barang/Jasa (Description of Items/Services)
+11. Metode Pembayaran (Payment Method / Bank Account)
+
+IMPORTANT FOR 'deskripsi': List ALL individual line items found in the invoice formatted as a single multiline string with bullet points. Include the item name, quantity, and specific price for EACH item. (e.g., "- Besi Baja (Qty: 2) - Rp 1.000.000\n- Panci (Qty: 1) - Rp 500.000")
 
 Return the results ONLY as a valid JSON object without any markdown formatting like ```json or ```. The JSON keys must be exactly as follows:
 {
+  "nomor_invoice": "",
   "tanggal": "",
+  "tanggal_jatuh_tempo": "",
   "nama_pengirim": "",
   "nama_pt": "",
   "penerima": "",
-  "total_harga": ""
+  "mata_uang": "",
+  "total_harga": "",
+  "pajak": "",
+  "deskripsi": "",
+  "metode_pembayaran": ""
 }"""
 
 def process_file_to_base64_image(file_bytes: bytes, filename: str) -> str:

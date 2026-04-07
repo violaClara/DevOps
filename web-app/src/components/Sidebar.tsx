@@ -3,14 +3,16 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Home, FolderOpen, Archive } from "lucide-react";
+import { useLanguage } from "@/lib/i18n/LanguageContext";
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { t } = useLanguage();
 
   const navItems = [
-    { href: "/", icon: Home, label: "Home" },
-    { href: "/documents", icon: FolderOpen, label: "Docs" },
-    { href: "/archive", icon: Archive, label: "Archive" },
+    { href: "/", icon: Home, label: t("nav_home") },
+    { href: "/documents", icon: FolderOpen, label: t("nav_documents") },
+    { href: "/archive", icon: Archive, label: t("nav_archive") },
   ];
 
   return (
