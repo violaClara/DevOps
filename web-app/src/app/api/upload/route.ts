@@ -5,17 +5,18 @@ const PYTHON_SERVICE_URL = process.env.PYTHON_SERVICE_URL || "http://127.0.0.1:8
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
-    const file = formData.get("file") as File;
+    const files = formData.getAll("file") as File[];
 
-    if (!file) {
-      return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    if (!files || files.length === 0) {
+      return NextResponse.json({ error: "No files provided" }, { status: 400 });
     }
 
-    // Forward the file to the Python microservice
     const pythonFormData = new FormData();
-    pythonFormData.append("file", file);
+    files.forEach(file => {
+      pythonFormData.append("files", file);
+    });
 
-    const pythonResponse = await fetch(`${PYTHON_SERVICE_URL}/api/extract-pdf`, {
+    const pythonResponse = await fetch(`${PYTHON_SERVICE_URL}/api/extract-batch`, {
       method: "POST",
       body: pythonFormData,
     });
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
     const err = error as Error;
     console.error("Upload API Error:", err);
     return NextResponse.json(
-      { error: err.message || "Failed to process the PDF" },
+      { error: err.message || "Failed to process the files" },
       { status: 500 }
     );
   }

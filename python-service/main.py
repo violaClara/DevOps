@@ -2,9 +2,11 @@ import os
 import io
 import json
 import base64
+from typing import List, Dict, Any
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pdf2image import convert_from_bytes
+from PIL import Image
 from openai import AsyncOpenAI
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -25,7 +27,7 @@ app.add_middleware(
 
 # OpenRouter Configuration
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "qwen/qwen-2.5-vl-7b-instruct")
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "qwen/qwen2.5-vl-32b-instruct")
 
 client = AsyncOpenAI(
     base_url="https://openrouter.ai/api/v1",
@@ -52,21 +54,27 @@ Return the results ONLY as a valid JSON object without any markdown formatting l
   "total_harga": ""
 }"""
 
-def process_pdf_to_base64_image(pdf_bytes: bytes) -> str:
-    """Converts the first page of a PDF to a base64 encoded JPEG image."""
+def process_file_to_base64_image(file_bytes: bytes, filename: str) -> str:
+    """Converts a PDF or Image (JPEG, PNG) to a base64 encoded JPEG image."""
     try:
-        # Note: pdf2image requires poppler installed on the system map
-        # If testing locally on Windows, ensure poppler bin is in PATH or provide poppler_path
-        poppler_path = r"C:\Program Files (x86)\Poppler\poppler-25.12.0\Library\bin"
-        if os.path.exists(poppler_path):
-            pages = convert_from_bytes(pdf_bytes, first_page=1, last_page=1, poppler_path=poppler_path)
-        else:
-            pages = convert_from_bytes(pdf_bytes, first_page=1, last_page=1)
+        if filename.lower().endswith(".pdf"):
+            # Note: pdf2image requires poppler installed on the system map
+            # If testing locally on Windows, ensure poppler bin is in PATH or provide poppler_path
+            poppler_path = r"C:\Program Files (x86)\Poppler\poppler-25.12.0\Library\bin"
+            if os.path.exists(poppler_path):
+                pages = convert_from_bytes(file_bytes, first_page=1, last_page=1, poppler_path=poppler_path)
+            else:
+                pages = convert_from_bytes(file_bytes, first_page=1, last_page=1)
+                
+            if not pages:
+                raise ValueError("No pages found in PDF")
             
-        if not pages:
-            raise ValueError("No pages found in PDF")
-        
-        image = pages[0]
+            image = pages[0]
+        else:
+            # Handle image files (jpg, jpeg, png)
+            image = Image.open(io.BytesIO(file_bytes))
+            if image.mode in ("RGBA", "P"):
+                image = image.convert("RGB")
         
         # Resize to save token context if necessary
         image.thumbnail((1024, 1024))
@@ -78,28 +86,28 @@ def process_pdf_to_base64_image(pdf_bytes: bytes) -> str:
         
         return img_str
     except Exception as e:
-        raise Exception(f"Failed to convert PDF to image: {str(e)}")
+        raise Exception(f"Failed to process file to image: {str(e)}")
 
-@app.post("/api/extract-pdf")
-async def extract_pdf(file: UploadFile = File(...)):
-    if not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="File must be a PDF")
+async def process_single_file(file: UploadFile) -> Dict[str, Any]:
+    allowed_extensions = (".pdf", ".jpeg", ".jpg", ".png")
+    if not file.filename.lower().endswith(allowed_extensions):
+        return {"filename": file.filename, "status": "error", "message": "File must be a PDF, JPEG, JPG, or PNG"}
     
     # Re-check key from env if it was empty on startup
     api_key = OPENROUTER_API_KEY or os.getenv("OPENROUTER_API_KEY", "")
     if not api_key:
-        raise HTTPException(status_code=500, detail="OpenRouter API Key is not configured")
+        return {"filename": file.filename, "status": "error", "message": "OpenRouter API Key is not configured"}
 
     # Update client key if it was missing 
     if not client.api_key or client.api_key == "":
         client.api_key = api_key
 
     try:
-        # 1. Read PDF file bytes
-        pdf_bytes = await file.read()
+        # 1. Read file bytes
+        file_bytes = await file.read()
         
-        # 2. Convert first page to base64 image
-        base64_image = process_pdf_to_base64_image(pdf_bytes)
+        # 2. Convert file to base64 image
+        base64_image = process_file_to_base64_image(file_bytes, file.filename)
         
         # 3. Call OpenRouter setup
         messages = [
@@ -143,18 +151,37 @@ async def extract_pdf(file: UploadFile = File(...)):
         
         try:
             parsed_json = json.loads(cleaned_output)
-            return {"status": "success", "data": parsed_json}
+            return {"filename": file.filename, "status": "success", "data": parsed_json}
         except json.JSONDecodeError:
             print("Failed to parse JSON. Raw output:", cleaned_output)
             # Fallback if the output wasn't valid JSON
             return {
+                "filename": file.filename,
                 "status": "error", 
                 "message": "Failed to parse model output as JSON", 
                 "raw_output": output_text
             }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error extracting PDF: {str(e)}")
+        return {"filename": file.filename, "status": "error", "message": f"Error extracting file: {str(e)}"}
+
+@app.post("/api/extract-pdf")
+@app.post("/api/extract")
+async def extract_document(file: UploadFile = File(...)):
+    result = await process_single_file(file)
+    if result["status"] == "error":
+        raise HTTPException(status_code=400 if "must be a" in result["message"] else 500, detail=result["message"])
+    return {"status": "success", "data": result["data"]}
+
+@app.post("/api/extract-batch")
+async def extract_documents_batch(files: List[UploadFile] = File(...)):
+    if not files:
+        raise HTTPException(status_code=400, detail="No files provided")
+    
+    tasks = [process_single_file(file) for file in files]
+    results = await asyncio.gather(*tasks)
+    
+    return {"status": "success", "data": results}
 
 @app.get("/health")
 def health_check():
